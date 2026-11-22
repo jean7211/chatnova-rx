@@ -7,88 +7,118 @@
 <title>ChatNova RX</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;font-family:Arial,sans-serif;background:#e9f2ee;color:#172b24}
-header{background:#075e45;color:white;padding:18px;font-size:23px;font-weight:bold}
-main{max-width:850px;margin:25px auto;padding:15px}
-.panel{background:white;border-radius:14px;padding:20px;box-shadow:0 4px 18px #0001}
-h2{margin-top:0}
-input,button{padding:13px;border-radius:8px;border:1px solid #ddd;font-size:15px}
-input{width:100%;margin:7px 0}
-button{background:#087b59;color:white;border:0;cursor:pointer}
-button:hover{background:#065f46}
-#chat{display:none}
-#messages{height:350px;overflow:auto;border:1px solid #eee;padding:12px;margin:12px 0;border-radius:10px}
-.msg{background:#d9f8e8;padding:10px;border-radius:10px;margin:8px 0;max-width:85%;overflow-wrap:anywhere}
-small{color:#667}
-.send{display:flex;gap:8px}
-.send input{flex:1}
+body{margin:0;background:#071b17;color:white;font-family:Arial,sans-serif}
+.app{max-width:650px;height:100vh;margin:auto;display:flex;flex-direction:column;background:#102923}
+header{padding:18px;background:#075e48;font-size:23px;font-weight:bold}
+#login{padding:25px;text-align:center;margin:auto;width:100%}
+input{padding:14px;border:0;border-radius:9px;font-size:16px;width:100%;outline:none}
+button{padding:14px 20px;border:0;border-radius:9px;background:#00c78b;color:#06251d;font-weight:bold;cursor:pointer}
+#login button{margin-top:12px;width:100%}
+#chat{display:none;flex:1;min-height:0;flex-direction:column}
+#messages{flex:1;overflow-y:auto;padding:15px}
+.msg{background:#17483a;padding:12px;margin:9px 0;border-radius:12px;overflow-wrap:anywhere}
+.msg b{color:#5fffc4}
+.msg small{display:block;color:#b8d6cb;margin-top:5px}
+#status{padding:8px 15px;color:#8fe6c7;font-size:13px}
+#sendbox{display:flex;gap:8px;padding:12px;background:#0b211c}
+#sendbox input{flex:1;min-width:0}
 </style>
 </head>
 <body>
-<header>💬 ChatNova RX</header>
-<main>
-<section class="panel" id="login">
+<div class="app">
+<header>🟢 ChatNova RX</header>
+
+<div id="login">
 <h2>Welcome to ChatNova RX</h2>
-<p>Sign in to open your chat.</p>
-<input id="username" placeholder="Enter your name">
-<button onclick="login()">Continue</button>
-</section>
-
-<section class="panel" id="chat">
-<h2 id="welcome">Your Chat</h2>
-<small>Personal demo chat · Messages stay in this browser</small>
-<div id="messages"></div>
-<div class="send">
-<input id="message" placeholder="Type a message..." onkeydown="if(event.key==='Enter')send()">
-<button onclick="send()">Send</button>
+<p>Enter your name to join the chat</p>
+<input id="username" maxlength="30" placeholder="Your name">
+<button onclick="joinChat()">Join Chat</button>
 </div>
-<button onclick="logout()" style="margin-top:12px;background:#777">Log out</button>
-</section>
-</main>
 
+<div id="chat">
+<div id="status">Connecting...</div>
+<div id="messages"></div>
+<div id="sendbox">
+<input id="messageInput" maxlength="2000" placeholder="Type a message...">
+<button onclick="sendMessage()">Send</button>
+</div>
+</div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
 <script>
-let user="";
-function login(){
- const name=document.getElementById("username").value.trim();
- if(!name){alert("Please enter your name");return}
- user=name;
- document.getElementById("login").style.display="none";
- document.getElementById("chat").style.display="block";
- document.getElementById("welcome").textContent="Welcome, "+user+"!";
- showMessages();
+let socket;
+let username = "";
+
+function joinChat(){
+  username = document.getElementById("username").value.trim();
+  if(!username){
+    alert("Please enter your name");
+    return;
+  }
+
+  document.getElementById("login").style.display = "none";
+  document.getElementById("chat").style.display = "flex";
+
+  socket = io();
+
+  socket.on("connect", () => {
+    document.getElementById("status").textContent = "🟢 Connected";
+  });
+
+  socket.on("disconnect", () => {
+    document.getElementById("status").textContent = "🔴 Disconnected. Reconnecting...";
+  });
+
+  socket.on("chat history", (history) => {
+    document.getElementById("messages").innerHTML = "";
+    history.forEach(showMessage);
+  });
+
+  socket.on("chat message", showMessage);
 }
-function send(){
- const box=document.getElementById("message");
- const value=box.value.trim();
- if(!value)return;
- const messages=JSON.parse(localStorage.getItem("chatnova_messages")||"[]");
- messages.push({user:user,text:value,time:new Date().toLocaleTimeString()});
- localStorage.setItem("chatnova_messages",JSON.stringify(messages));
- box.value="";
- showMessages();
+
+function sendMessage(){
+  const input = document.getElementById("messageInput");
+  const message = input.value.trim();
+
+  if(!message || !socket || !socket.connected) return;
+
+  socket.emit("chat message", {
+    name: username,
+    message: message
+  });
+
+  input.value = "";
 }
-function showMessages(){
- const messages=JSON.parse(localStorage.getItem("chatnova_messages")||"[]");
- document.getElementById("messages").innerHTML="";
- messages.forEach(m=>{
-  const div=document.createElement("div");
-  div.className="msg";
-  const strong=document.createElement("strong");
-  strong.textContent=m.user+": ";
-  div.appendChild(strong);
-  div.appendChild(document.createTextNode(m.text+" "));
-  const time=document.createElement("small");
-  time.textContent=m.time;
-  div.appendChild(time);
-  document.getElementById("messages").appendChild(div);
- });
- document.getElementById("messages").scrollTop=999999;
+
+function showMessage(data){
+  const area = document.getElementById("messages");
+  const box = document.createElement("div");
+  box.className = "msg";
+
+  const name = document.createElement("b");
+  name.textContent = data.name;
+
+  const text = document.createElement("div");
+  text.textContent = data.message;
+
+  const time = document.createElement("small");
+  time.textContent = new Date(data.time).toLocaleTimeString();
+
+  box.append(name, text, time);
+  area.appendChild(box);
+  area.scrollTop = area.scrollHeight;
 }
-function logout(){
- user="";
- document.getElementById("chat").style.display="none";
- document.getElementById("login").style.display="block";
-}
+
+document.getElementById("messageInput").addEventListener("keydown", function(e){
+  if(e.key === "Enter") sendMessage();
+});
+document.getElementById("username").addEventListener("keydown", function(e){
+  if(e.key === "Enter") joinChat();
+});
 </script>
 </body>
 </html>
+
+
